@@ -1,6 +1,7 @@
 -- NANC survey database (Supabase / PostgreSQL).
 -- Run in the Supabase SQL editor. The public survey page uses the anon key and can only INSERT.
 -- Reviewers sign in (Supabase Auth) and are granted read access through the staff table.
+-- Safe to run more than once.
 
 create table if not exists public.responses (
   id              uuid primary key,
@@ -31,19 +32,31 @@ alter table public.responses enable row level security;
 alter table public.contacts  enable row level security;
 alter table public.staff     enable row level security;
 
+-- Table privileges. New Supabase projects do not grant these automatically,
+-- and row-level security policies only take effect once the role has the privilege.
+grant usage on schema public to anon, authenticated;
+revoke all on public.responses, public.contacts, public.staff from anon;
+grant insert on public.responses, public.contacts to anon;
+grant select on public.responses, public.contacts, public.staff to authenticated;
+
 -- Public survey: insert only, never read.
+drop policy if exists "public can submit responses" on public.responses;
 create policy "public can submit responses" on public.responses
   for insert to anon with check (true);
+drop policy if exists "public can submit contacts" on public.contacts;
 create policy "public can submit contacts" on public.contacts
   for insert to anon with check (true);
 
 -- Staff can read responses; only admins can read contacts.
+drop policy if exists "staff read responses" on public.responses;
 create policy "staff read responses" on public.responses
   for select to authenticated
   using (exists (select 1 from public.staff s where s.user_id = auth.uid()));
+drop policy if exists "admins read contacts" on public.contacts;
 create policy "admins read contacts" on public.contacts
   for select to authenticated
   using (exists (select 1 from public.staff s where s.user_id = auth.uid() and s.role = 'admin'));
+drop policy if exists "staff see own role" on public.staff;
 create policy "staff see own role" on public.staff
   for select to authenticated using (user_id = auth.uid());
 
@@ -53,3 +66,5 @@ select r.id as response_id, r.language, r.mode, r.answers->>'D2' as city, r.answ
        q.key as question, jsonb_array_elements_text(q.value) as choice
 from public.responses r, jsonb_each(r.answers) q
 where jsonb_typeof(q.value) = 'array';
+
+grant select on public.response_choices to authenticated;

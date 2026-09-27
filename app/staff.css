@@ -110,6 +110,7 @@ label { font-weight: 600; font-size: 14px; }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
 .badge.info, .badge.role-reviewer { background: var(--info-bg); color: var(--info-ink); border-color: transparent; }
 .badge.role-manager { background: var(--ok-bg); color: var(--ok-ink); border-color: transparent; }
+.badge.role-volunteer { background: var(--surface-2); color: var(--text-2); }
 .badge.role-admin { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
 .badge.muted { color: var(--muted); }
 .chip-tag { display: inline-block; margin: 2px 2px 0 0; padding: 0 8px; border-radius: 6px; background: var(--primary-soft); color: var(--text-2); font-size: 12px; }
@@ -189,6 +190,8 @@ label { font-weight: 600; font-size: 14px; }
 .hero-value { font-size: 3.25rem; font-weight: 600; line-height: 1.1; margin: 4px 0 0; }
 .hero-of { font-size: 1rem; font-weight: 400; color: var(--text-2); }
 .hero-side p { margin: 0 0 4px; text-align: right; color: var(--text-2); }
+.btn-big { min-height: 52px; padding: 12px 28px; font-size: 1.05rem; }
+.vol-hero .hero-row { align-items: center; }
 .meter { height: 12px; border-radius: 6px; background: var(--primary-soft); overflow: hidden; }
 .meter-fill { height: 100%; background: var(--bar); border-radius: 6px; }
 

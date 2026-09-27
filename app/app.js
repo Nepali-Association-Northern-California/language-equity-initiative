@@ -24,10 +24,14 @@
       continueTitle: 'You have an unfinished survey on this device.',
       continueBtn: 'Continue where I left off',
       discardBtn: 'Start over',
-      volunteerToggle: 'I am a volunteer helping someone fill this survey',
-      volunteerName: 'Volunteer name or code',
+      volunteerMode: 'Volunteer mode',
+      signedInAs: 'Signed in as',
+      mySurveys: 'My surveys',
+      signOut: 'Sign out',
+      volunteerSignIn: 'Volunteer? Sign in to record the surveys you collect',
+      volunteerPending: 'Your volunteer account is waiting for an admin to approve it. Surveys you collect now are not credited to you yet.',
       mode: 'How is this survey being done?',
-      modes: { self: 'Respondent is filling it alone', in_person: 'In person, volunteer helping', phone: 'By phone', paper: 'Typing in a paper form' },
+      modes: { self: 'Respondent filled it on my device', in_person: 'In person, volunteer helping', phone: 'By phone', paper: 'Typing in a paper form' },
       sectionOf: 'Section {n} of {t}',
       back: 'Back',
       next: 'Next',
@@ -71,10 +75,14 @@
       continueTitle: 'यस उपकरणमा तपाईंको अधुरो सर्वेक्षण छ।',
       continueBtn: 'छोडेको ठाउँबाट जारी राख्नुहोस्',
       discardBtn: 'नयाँ सुरु गर्नुहोस्',
-      volunteerToggle: 'म कसैलाई यो सर्वेक्षण भर्न सहयोग गर्ने स्वयंसेवक हुँ',
-      volunteerName: 'स्वयंसेवकको नाम वा कोड',
+      volunteerMode: 'स्वयंसेवक मोड',
+      signedInAs: 'साइन इन गर्ने',
+      mySurveys: 'मेरा सर्वेक्षणहरू',
+      signOut: 'साइन आउट',
+      volunteerSignIn: 'स्वयंसेवक हुनुहुन्छ? आफूले सङ्कलन गरेका सर्वेक्षण रेकर्ड गर्न साइन इन गर्नुहोस्',
+      volunteerPending: 'तपाईंको स्वयंसेवक खाता एडमिनको स्वीकृतिको पर्खाइमा छ। अहिले सङ्कलन गरेका सर्वेक्षण तपाईंको नाममा गनिँदैनन्।',
       mode: 'यो सर्वेक्षण कसरी भरिँदैछ?',
-      modes: { self: 'उत्तरदाता आफैँ भर्दै हुनुहुन्छ', in_person: 'प्रत्यक्ष भेटमा, स्वयंसेवकको सहयोगमा', phone: 'फोनबाट', paper: 'कागजी फारामबाट प्रविष्टि' },
+      modes: { self: 'उत्तरदाताले मेरो उपकरणमा आफैँ भर्नुभयो', in_person: 'प्रत्यक्ष भेटमा, स्वयंसेवकको सहयोगमा', phone: 'फोनबाट', paper: 'कागजी फारामबाट प्रविष्टि' },
       sectionOf: 'खण्ड {n} / {t}',
       back: 'पछाडि',
       next: 'अर्को',
@@ -122,7 +130,10 @@
   }
 
   /* ------------------------------------------------------------ state */
-  var volunteer = load(VOL_KEY, { name: '', mode: 'self' });
+  var volunteer = load(VOL_KEY, { mode: 'in_person' });
+  if (!volunteer.mode) volunteer.mode = 'in_person';
+  var VPROF_KEY = 'nanc_volunteer_profile_v1';
+  var vprofile = load(VPROF_KEY, null);
   var state = freshState('en');
   var draft = load(DRAFT_KEY, null);
   var statusMessage = '';
@@ -220,18 +231,7 @@
       '<button type="button" class="lang-choice" data-action="start" data-lang="en"><span class="big">English</span><span>Start the survey</span></button>' +
       '</div>';
 
-    var modes = ['self', 'in_person', 'phone', 'paper'];
-    html += '<details class="card volunteer"' + (volunteer.name ? ' open' : '') + '>' +
-      '<summary>' + esc(UI.en.volunteerToggle) + '<br><span lang="ne">' + esc(UI.ne.volunteerToggle) + '</span></summary>' +
-      '<label class="field"><span>' + esc(UI.en.volunteerName) + ' · <span lang="ne">' + esc(UI.ne.volunteerName) + '</span></span>' +
-      '<input type="text" autocomplete="off" data-vol="name" value="' + esc(volunteer.name) + '"></label>' +
-      '<fieldset class="field"><legend>' + esc(UI.en.mode) + ' · <span lang="ne">' + esc(UI.ne.mode) + '</span></legend><div class="options">';
-    modes.forEach(function (m) {
-      var on = volunteer.mode === m;
-      html += '<label class="opt' + (on ? ' is-checked' : '') + '"><input type="radio" name="vol-mode" data-vol="mode" value="' + m + '"' + (on ? ' checked' : '') + '>' +
-        '<span class="opt-box" aria-hidden="true"></span><span class="opt-label">' + esc(UI.en.modes[m]) + ' · <span lang="ne">' + esc(UI.ne.modes[m]) + '</span></span></label>';
-    });
-    html += '</div></fieldset></details>';
+    html += renderVolunteerBlock();
 
     var queue = load(QUEUE_KEY, []);
     if (queue.length) html += '<p class="small-note">' + esc(fmt(UI.en.pending, { n: queue.length })) + '</p>';
@@ -248,6 +248,30 @@
     return '<p class="time-line" id="time-line"><span aria-hidden="true">⏱</span> ' + esc(t('timeSpent')) + ' ' +
       '<strong data-timer>' + fmtClock(state.activeMs || 0) + '</strong>' +
       '<span class="time-paused"> (' + esc(t('paused')) + ')</span> · ' + esc(t('aboutTotal')) + '</p>';
+  }
+
+  /* Volunteer sign-in happens on the staff page; this page reads that login (same site, same browser). */
+  function both(key) { return esc(UI.en[key]) + '<br><span lang="ne">' + esc(UI.ne[key]) + '</span>'; }
+  function renderVolunteerBlock() {
+    var session = getSession();
+    if (isVolunteer()) {
+      var modes = ['in_person', 'phone', 'paper', 'self'];
+      var html = '<section class="card volunteer is-signed-in"><p class="vol-title"><strong>' + esc(UI.en.volunteerMode) + ' · <span lang="ne">' + esc(UI.ne.volunteerMode) + '</span></strong><br>' +
+        esc(UI.en.signedInAs) + ': <strong>' + esc(vprofile.name) + '</strong></p>' +
+        '<fieldset class="field"><legend>' + esc(UI.en.mode) + ' · <span lang="ne">' + esc(UI.ne.mode) + '</span></legend><div class="options">';
+      modes.forEach(function (m) {
+        var on = volunteer.mode === m;
+        html += '<label class="opt' + (on ? ' is-checked' : '') + '"><input type="radio" name="vol-mode" data-vol="mode" value="' + m + '"' + (on ? ' checked' : '') + '>' +
+          '<span class="opt-box" aria-hidden="true"></span><span class="opt-label">' + esc(UI.en.modes[m]) + ' · <span lang="ne">' + esc(UI.ne.modes[m]) + '</span></span></label>';
+      });
+      return html + '</div></fieldset><p class="vol-links"><a href="staff.html#/volunteer">' + esc(UI.en.mySurveys) + '</a> · ' +
+        '<button type="button" class="link-btn" data-action="vol-signout">' + esc(UI.en.signOut) + '</button></p></section>';
+    }
+    if (session && vprofile && vprofile.id === session.user.id) {
+      return '<section class="card volunteer"><p>' + both('volunteerPending') + '</p><p class="vol-links"><button type="button" class="link-btn" data-action="vol-signout">' +
+        esc(UI.en.signOut) + '</button></p></section>';
+    }
+    return '<p class="small-note vol-signin"><a href="staff.html">' + both('volunteerSignIn') + '</a></p>';
   }
 
   function renderConsent() {
@@ -444,7 +468,6 @@
 
   app.addEventListener('input', function (e) {
     var el = e.target;
-    if (el.dataset.vol === 'name') { volunteer.name = el.value; store(VOL_KEY, volunteer); return; }
     if (el.dataset.text) { state.answers[el.dataset.text] = el.value; saveDraft(); return; }
     if (el.dataset.count) {
       var c = Object.assign({}, state.answers[el.dataset.count] || {});
@@ -494,6 +517,7 @@
     }
     else if (action === 'restart') { state = freshState(state.lang); statusMessage = ''; render(); }
     else if (action === 'export') exportLocal();
+    else if (action === 'vol-signout') volunteerSignOut();
   });
 
   function goNext() {
@@ -542,27 +566,28 @@
         id: state.id,
         survey_version: SURVEY.version,
         language: state.lang,
-        mode: volunteer.mode || 'self',
-        volunteer_code: volunteer.mode && volunteer.mode !== 'self' ? (volunteer.name || null) : null,
+        mode: isVolunteer() ? volunteer.mode : 'self',
+        volunteer_code: isVolunteer() ? vprofile.name : null,
         started_at: state.startedAt,
         submitted_at: new Date().toISOString(),
         duration_seconds: Math.round((state.activeMs || 0) / 1000),
         section_seconds: sectionSeconds(),
         answers: answers
       },
-      contact: Object.keys(contact).length ? { response_id: state.id, first_name: contact.C1 || null, last_name: contact.C2 || null } : null
+      contact: Object.keys(contact).length ? { response_id: state.id, first_name: contact.C1 || null, last_name: contact.C2 || null } : null,
+      asVolunteer: isVolunteer()
     };
   }
 
   function backendConfigured() { return !!(CFG.supabaseUrl && CFG.supabaseAnonKey); }
 
-  function postRow(table, row) {
+  function postRow(table, row, token) {
     return fetch(CFG.supabaseUrl.replace(/\/$/, '') + '/rest/v1/' + table, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         apikey: CFG.supabaseAnonKey,
-        Authorization: 'Bearer ' + CFG.supabaseAnonKey,
+        Authorization: 'Bearer ' + (token || CFG.supabaseAnonKey),
         Prefer: 'return=minimal'
       },
       body: JSON.stringify(row)
@@ -572,19 +597,91 @@
     });
   }
 
-  function send(payload) {
-    return postRow('responses', payload.response).catch(function (err) {
-      // Database not yet upgraded with the timing columns: send without them rather than lose the response.
-      if (err.status === 400 && 'duration_seconds' in payload.response) {
-        var legacy = Object.assign({}, payload.response);
+  // Send one response. Assisted surveys go with the volunteer's login so the database stamps who collected them.
+  // Nothing is ever dropped: if the login has expired or been removed, the survey is sent without it
+  // (the volunteer's name is kept as text, marked unverified); if the database lacks newer columns, they are left out.
+  function postResponse(row, token) {
+    return postRow('responses', row, token).catch(function (err) {
+      if (token && (err.status === 401 || err.status === 403)) return postResponse(row, null);
+      if (err.status === 400 && 'duration_seconds' in row) {
+        var legacy = Object.assign({}, row);
         delete legacy.duration_seconds;
         delete legacy.section_seconds;
-        return postRow('responses', legacy);
+        return postResponse(legacy, token);
       }
       throw err;
+    });
+  }
+
+  function send(payload) {
+    return (payload.asVolunteer ? freshToken() : Promise.resolve(null)).then(function (token) {
+      return postResponse(payload.response, token);
     }).then(function () {
       return payload.contact ? postRow('contacts', payload.contact) : null;
     });
+  }
+
+  /* ------------------------------------------------------------ volunteer login (shared with staff.html) */
+  function apiBase() { return CFG.supabaseUrl.replace(/\/$/, ''); }
+  function authKey() {
+    try { return 'sb-' + new URL(CFG.supabaseUrl).hostname.split('.')[0] + '-auth-token'; } catch (e) { return null; }
+  }
+  function getSession() {
+    if (!backendConfigured()) return null;
+    var sess = load(authKey(), null);
+    return sess && sess.refresh_token && sess.user ? sess : null;
+  }
+  function isVolunteer() {
+    var sess = getSession();
+    return !!(sess && vprofile && vprofile.id === sess.user.id && vprofile.role && vprofile.active);
+  }
+  // Resolves to a valid access token, or null if the person is signed out. Rejects only when offline.
+  function freshToken() {
+    var sess = getSession();
+    if (!sess) return Promise.resolve(null);
+    if (sess.expires_at && sess.expires_at * 1000 - Date.now() > 60000) return Promise.resolve(sess.access_token);
+    return fetch(apiBase() + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: CFG.supabaseAnonKey },
+      body: JSON.stringify({ refresh_token: sess.refresh_token })
+    }).then(function (res) {
+      if (res.status === 400 || res.status === 401 || res.status === 403) return null;
+      if (!res.ok) throw new Error('auth ' + res.status);
+      return res.json().then(function (d) {
+        var next = Object.assign({}, sess, d);
+        next.expires_at = Math.floor(Date.now() / 1000) + (d.expires_in || 3600);
+        store(authKey(), next);
+        return next.access_token;
+      });
+    });
+  }
+  function loadVolunteerProfile() {
+    var sess = getSession();
+    if (!sess) { vprofile = null; remove(VPROF_KEY); return; }
+    if (!navigator.onLine) return;   // keep the saved profile for offline field work
+    freshToken().then(function (token) {
+      if (!token) { vprofile = null; remove(VPROF_KEY); return null; }
+      return fetch(apiBase() + '/rest/v1/profiles?select=id,full_name,email,role,active&id=eq.' + encodeURIComponent(sess.user.id), {
+        headers: { apikey: CFG.supabaseAnonKey, Authorization: 'Bearer ' + token }
+      }).then(function (res) { return res.ok ? res.json() : []; }).then(function (rows) {
+        var p = rows[0];
+        vprofile = p ? { id: p.id, name: p.full_name || p.email, role: p.role, active: p.active } : null;
+        if (vprofile) store(VPROF_KEY, vprofile); else remove(VPROF_KEY);
+      });
+    }).catch(function () { /* offline: keep what we have */ }).then(function () {
+      if (state.page === 'start') render(true);
+    });
+  }
+  function volunteerSignOut() {
+    var sess = getSession();
+    if (sess && navigator.onLine) {
+      fetch(apiBase() + '/auth/v1/logout', { method: 'POST', headers: { apikey: CFG.supabaseAnonKey, Authorization: 'Bearer ' + sess.access_token } })
+        .catch(function () {});
+    }
+    remove(authKey());
+    remove(VPROF_KEY);
+    vprofile = null;
+    render(true);
   }
 
   function submit(btn) {
@@ -694,5 +791,6 @@
   }
 
   render();
+  loadVolunteerProfile();
   flushQueue();
 })();

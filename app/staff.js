@@ -23,8 +23,8 @@
   });
 
   /* ------------------------------------------------------------ survey metadata */
-  var RANK = { reviewer: 1, manager: 2, admin: 3 };
-  var ROLE_LABEL = { reviewer: 'Data Reviewer', manager: 'Program Manager', admin: 'Admin' };
+  var RANK = { volunteer: 0, reviewer: 1, manager: 2, admin: 3 };
+  var ROLE_LABEL = { volunteer: 'Volunteer', reviewer: 'Data Reviewer', manager: 'Program Manager', admin: 'Admin' };
   var QINDEX = {};
   var SECTION_OF = {};
   var SENSITIVE = {};
@@ -64,6 +64,7 @@
 
   function blankFilters() { return { range: 'all', from: '', to: '', D2: '', D3: '', D4: '', D5: '', L2: '', language: '', mode: '' }; }
   function can(min) { return !!(profile && profile.active && profile.role && RANK[profile.role] >= RANK[min]); }
+  var QUEUE_KEY = 'nanc_survey_queue_v1';   // the survey page's offline queue on this device
 
   /* ------------------------------------------------------------ utilities */
   function fmtDate(iso) {
@@ -324,7 +325,7 @@
         '<button class="btn btn-primary" type="submit">Sign in</button>' +
         '<button class="btn btn-ghost" type="button" data-action="magic-link">Email me a sign-in link instead</button></form>';
     } else if (tab === 'request') {
-      html += '<p class="muted">Staff and volunteers who review data can request an account. An admin must approve it and assign a role before you can see any data.</p>' +
+      html += '<p class="muted">Volunteers who collect surveys, and staff who review data, can request an account. An admin must approve it and assign a role before you can see any data.</p>' +
         '<form data-form="signup" class="stack-form">' +
         '<label>Full name<input type="text" name="full_name" autocomplete="name" required></label>' +
         '<label>Email<input type="email" name="email" autocomplete="username" required></label>' +
@@ -356,6 +357,7 @@
 
   /* ============================================================ SHELL + ROUTING */
   var ROUTES = [
+    { id: 'volunteer', label: 'My surveys', min: 'volunteer', render: renderVolunteer },
     { id: 'operations', label: 'Program dashboard', min: 'manager', render: renderOperations },
     { id: 'dashboard', label: 'Survey dashboard', min: 'reviewer', render: renderDashboard },
     { id: 'responses', label: 'Responses', min: 'reviewer', render: renderResponses },
@@ -365,9 +367,9 @@
     { id: 'users', label: 'Users & roles', min: 'admin', group: 'Admin', render: renderUsers },
     { id: 'names', label: 'Names (restricted)', min: 'admin', group: 'Admin', render: renderNames },
     { id: 'settings', label: 'Settings & audit log', min: 'admin', group: 'Admin', render: renderSettings },
-    { id: 'account', label: 'My account', min: 'reviewer', hidden: true, render: renderAccount }
+    { id: 'account', label: 'My account', min: 'volunteer', hidden: true, render: renderAccount }
   ];
-  function defaultRoute() { return can('manager') ? 'operations' : 'dashboard'; }
+  function defaultRoute() { return can('manager') ? 'operations' : can('reviewer') ? 'dashboard' : 'volunteer'; }
   function parseHash() {
     var h = location.hash.replace(/^#\/?/, '');
     var parts = h.split('?');
@@ -430,6 +432,37 @@
       '<button type="button" class="menu-btn" data-action="toggle-nav" aria-controls="sidebar" aria-expanded="false" aria-label="Menu">☰</button>' +
       '<h1>' + esc(active.label) + '</h1><span class="head-meta" id="head-meta"></span></header>' +
       '<main id="view" class="view"><p class="loading">Loading…</p></main></div></div>';
+  }
+
+  /* ============================================================ VOLUNTEER: MY SURVEYS */
+  async function renderVolunteer(view) {
+    var r = await sb.rpc('my_submissions');
+    if (r.error) throw r.error;
+    var mine = r.data || [];
+    var queued = 0;
+    try { queued = (JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]') || []).length; } catch (e) { /* ignore */ }
+    var weekAgo = Date.now() - 7 * 86400000;
+    var times = mine.map(function (x) { return x.duration_seconds; }).filter(function (d) { return d > 0; }).map(function (d) { return d / 60; });
+    var html = '<section class="panel hero-panel vol-hero"><div class="hero-row"><div>' +
+      '<p class="stat-label">Signed in as ' + esc(profile.full_name || profile.email) + '</p>' +
+      '<p class="hero-value">' + C.fmtNum(mine.length) + '<span class="hero-of"> surveys collected</span></p></div>' +
+      '<a class="btn btn-primary btn-big" href="index.html">Start a survey</a></div>' +
+      '<p class="panel-note">Surveys you start from this browser are recorded under your name. Choose how you are collecting it (in person, by phone or from a paper form) on the start page.</p></section>';
+    if (queued) {
+      html += '<p class="notice warn">' + C.fmtNum(queued) + ' survey' + (queued === 1 ? ' is' : 's are') +
+        ' saved on this device and waiting for internet. They upload automatically the next time the survey page is open and online.</p>';
+    }
+    html += '<div class="stats">' +
+      C.statTile('This week', C.fmtNum(mine.filter(function (x) { return new Date(x.submitted_at) > weekAgo; }).length), 'surveys submitted') +
+      C.statTile('In Nepali', C.fmtNum(mine.filter(function (x) { return x.language === 'ne'; }).length), 'of ' + C.fmtNum(mine.length)) +
+      C.statTile('Typical time', times.length ? Math.round(median(times)) + ' min' : '—', 'median active time') + '</div>';
+    html += '<section class="panel"><header class="panel-head"><div><h3>Your submissions</h3>' +
+      '<p class="panel-sub">Answers are not shown here. Once a survey is submitted, only authorized staff can see it, to protect respondents\' privacy.</p></div></header>' +
+      (mine.length ? C.table(['Submitted', 'Language', 'How', 'Active time', 'Status'], mine.map(function (x) {
+        return [fmtDateTime(x.submitted_at), LANG_LABEL[x.language], MODE_LABEL[x.mode] || x.mode,
+          x.duration_seconds ? Math.round(x.duration_seconds / 60) + ' min' : '—', x.excluded ? 'Excluded by program team' : 'Counted'];
+      })) : '<p class="empty">No surveys yet. Use "Start a survey" to begin.</p>') + '</section>';
+    view.innerHTML = html;
   }
 
   /* ============================================================ SURVEY DASHBOARD (all roles) */
@@ -563,16 +596,18 @@
     // by volunteer
     var vol = {};
     valid.forEach(function (r) {
-      var k = r.mode === 'self' ? 'Self-completed (no volunteer)' : (r.volunteer_code || 'Volunteer not named');
-      vol[k] = vol[k] || { n: 0, last: r.submitted_at };
+      var k = r.volunteer_code || (r.mode === 'self' ? 'Self-completed (no volunteer)' : 'Volunteer not named');
+      vol[k] = vol[k] || { n: 0, last: r.submitted_at, verified: 0 };
       vol[k].n++;
+      if (r.volunteer_verified) vol[k].verified++;
       if (r.submitted_at > vol[k].last) vol[k].last = r.submitted_at;
     });
     var volRows = Object.keys(vol).sort(function (a, b) { return vol[b].n - vol[a].n; }).map(function (k) {
-      return [k, C.fmtNum(vol[k].n), fmtDate(vol[k].last)];
+      var v = vol[k];
+      return [k, C.fmtNum(v.n), v.verified === v.n ? 'Yes' : v.verified ? C.fmtNum(v.verified) + ' of ' + C.fmtNum(v.n) : 'No', fmtDate(v.last)];
     });
-    html += '<section class="panel"><header class="panel-head"><div><h3>Surveys by volunteer</h3><p class="panel-sub">Who collected responses, and when they last submitted one</p></div></header>' +
-      (volRows.length ? C.table(['Volunteer', 'Surveys', 'Last submitted'], volRows) : '<p class="empty">No responses yet.</p>') + '</section>';
+    html += '<section class="panel"><header class="panel-head"><div><h3>Surveys by volunteer</h3><p class="panel-sub">Who collected responses. "Signed in" means the volunteer login was verified; "No" means only a typed name.</p></div></header>' +
+      (volRows.length ? C.table(['Volunteer', 'Surveys', 'Signed in', 'Last submitted'], volRows) : '<p class="empty">No responses yet.</p>') + '</section>';
 
     var modeItems = Object.keys(MODE_LABEL).map(function (k) { return { label: MODE_LABEL[k], count: valid.filter(function (r) { return r.mode === k; }).length }; });
     html += card('How surveys were completed', 'Share of valid responses', C.bars(modeItems, valid.length));
@@ -671,7 +706,7 @@
       '<div><span>Submitted</span><strong>' + esc(fmtDateTime(r.submitted_at)) + '</strong></div>' +
       '<div><span>Language</span><strong>' + esc(LANG_LABEL[r.language]) + '</strong></div>' +
       '<div><span>How</span><strong>' + esc(MODE_LABEL[r.mode] || r.mode) + '</strong></div>' +
-      (can('manager') ? '<div><span>Volunteer</span><strong>' + esc(r.volunteer_code || '—') + '</strong></div>' : '') +
+      (can('manager') ? '<div><span>Volunteer</span><strong>' + esc(r.volunteer_code || '—') + (r.volunteer_code ? ' ' + badge(r.volunteer_verified ? 'Signed in' : 'Not verified', r.volunteer_verified ? 'ok' : 'muted') : '') + '</strong></div>' : '') +
       '<div><span>Active time</span><strong>' + (r.duration_seconds ? Math.round(r.duration_seconds / 60) + ' min' : '—') + '</strong></div>' +
       '<div><span>Start to finish</span><strong>' + (elapsedMinutes(r) == null ? '—' : Math.round(elapsedMinutes(r)) + ' min') + '</strong></div>' +
       '<div><span>Status</span><strong>' + (r.excluded ? badge('Excluded', 'warn') + ' ' + esc(r.exclude_reason || '') : badge('Included', 'ok')) + '</strong></div></div>';
@@ -746,12 +781,12 @@
     var rows = cache.responses.filter(function (r) { return incl || !r.excluded; });
     var cols = exportColumns(mgr);
     var secIds = ['consent'].concat(SURVEY.sections.map(function (s) { return s.id; }));
-    var head = ['response_id', 'survey_version', 'submitted_at', 'language', 'mode'].concat(mgr ? ['volunteer_code', 'excluded', 'exclude_reason'] : [])
+    var head = ['response_id', 'survey_version', 'submitted_at', 'language', 'mode'].concat(mgr ? ['volunteer', 'volunteer_signed_in', 'excluded', 'exclude_reason'] : [])
       .concat(['active_minutes', 'start_to_finish_minutes']).concat(secIds.map(function (id) { return 'seconds_' + id; }))
       .concat(cols.map(function (c) { return c.key; }));
     var out = [head];
     rows.forEach(function (r) {
-      out.push([r.id, r.survey_version, r.submitted_at, r.language, r.mode].concat(mgr ? [r.volunteer_code, r.excluded ? 1 : 0, r.exclude_reason] : [])
+      out.push([r.id, r.survey_version, r.submitted_at, r.language, r.mode].concat(mgr ? [r.volunteer_code, r.volunteer_code ? (r.volunteer_verified ? 1 : 0) : '', r.excluded ? 1 : 0, r.exclude_reason] : [])
         .concat([r.duration_seconds ? (r.duration_seconds / 60).toFixed(1) : '', elapsedMinutes(r) == null ? '' : elapsedMinutes(r).toFixed(1)])
         .concat(secIds.map(function (id) { return r.section_seconds && r.section_seconds[id] != null ? r.section_seconds[id] : ''; }))
         .concat(cols.map(function (c) { var v = c.get(r.answers || {}); return v == null ? '' : v; })));
@@ -955,7 +990,7 @@
     var roleSelect = function (u) {
       var self = u.id === profile.id;
       return '<select data-action="set-role" data-id="' + u.id + '"' + (self ? ' disabled title="You cannot change your own role"' : '') + ' aria-label="Role for ' + esc(u.email) + '">' +
-        '<option value="">No access</option>' + ['reviewer', 'manager', 'admin'].map(function (r) {
+        '<option value="">No access</option>' + ['volunteer', 'reviewer', 'manager', 'admin'].map(function (r) {
           return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + ROLE_LABEL[r] + '</option>';
         }).join('') + '</select>';
     };
@@ -967,7 +1002,7 @@
             '<td>' + roleSelect(u) + '</td><td class="actions"><button class="btn-link danger" data-action="deny-user" data-id="' + u.id + '">Deny</button></td></tr>';
         }).join('') + '</tbody></table></div>' : '<p class="empty">No one is waiting.</p>') + '</section>';
     html += '<section class="panel"><header class="panel-head"><div><h3>Staff</h3><p class="panel-sub">' +
-      'Data Reviewer: dashboards and de-identified data. Program Manager: also full answers, focus groups and translations. Admin: also users, names, settings.</p></div></header>' +
+      'Volunteer: collect surveys under their own name, no access to answers. Data Reviewer: dashboards and de-identified data. Program Manager: also full answers, focus groups and translations. Admin: also users, names, settings.</p></div></header>' +
       '<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Access</th><th>Since</th></tr></thead><tbody>' +
       staff.map(function (u) {
         var self = u.id === profile.id;

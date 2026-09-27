@@ -36,15 +36,24 @@ Then open `http://<your-computer-ip>:8080` on a phone on the same Wi-Fi.
 Open `staff.html` on the same site, for example `https://<user>.github.io/language-equity-survey/staff.html`.
 There is also a "Staff sign in" link at the bottom of the survey start page.
 
-| Page | Data Reviewer | Program Manager | Admin |
-|---|:-:|:-:|:-:|
-| Survey dashboard: charts for every question, with filters | ✓ | ✓ | ✓ |
-| Responses list and single-response view | De-identified | Full | Full |
-| Export CSV: responses, codebook, summary tables | De-identified | Full | Full |
-| Focus groups and translations | Read only | Edit | Edit |
-| Program dashboard: progress to target, volunteers, coverage, data quality | | ✓ | ✓ |
-| Exclude or include a response | | ✓ | ✓ |
-| Users & roles, names (restricted), settings, audit log, deleting data | | | ✓ |
+| Page | Volunteer | Data Reviewer | Program Manager | Admin |
+|---|:-:|:-:|:-:|:-:|
+| My surveys: own count and list, no answers | ✓ | ✓ | ✓ | ✓ |
+| Survey dashboard: charts for every question, with filters | | ✓ | ✓ | ✓ |
+| Responses list and single-response view | | De-identified | Full | Full |
+| Export CSV: responses, codebook, summary tables | | De-identified | Full | Full |
+| Focus groups and translations | | Read only | Edit | Edit |
+| Program dashboard: progress to target, volunteers, coverage, data quality | | | ✓ | ✓ |
+| Exclude or include a response | | | ✓ | ✓ |
+| Users & roles, names (restricted), settings, audit log, deleting data | | | | ✓ |
+
+**Volunteers.** Volunteers choose **Request access** on the staff page, and an admin gives them the Volunteer role.
+Once signed in on a phone or tablet, the survey start page shows "Volunteer mode" with their name, and they choose
+how the survey is being done (in person, by phone, from a paper form, or the respondent typing on their device).
+The database stamps each survey with the signed-in volunteer, so it cannot be faked, and managers see "Signed in: Yes"
+in the program dashboard. Volunteers sign in once while online; surveys collected offline upload later under their name.
+If their login has expired or been removed by then, the survey is still saved, with their name marked "not verified".
+Volunteers never see answers, only their own list of submissions.
 
 **Survey timing.** A small timer in the survey header shows the time spent so far. It counts only while the survey
 is on screen and in use. It pauses when the tab is hidden or after 5 minutes without a tap or keypress, so a

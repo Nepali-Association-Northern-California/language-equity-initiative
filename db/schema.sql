@@ -4,6 +4,8 @@
 --
 -- Access model
 --   anon (public survey page)  : INSERT responses and contacts. Nothing else.
+--   volunteer                  : INSERT responses stamped with their own account (assisted surveys),
+--                                and see a list of their own submissions without answers.
 --   reviewer                   : aggregate dashboards and de-identified responses
 --                                (free-text "Other" answers removed) via fetch_responses().
 --   manager                    : everything a reviewer can do, full answers,
@@ -46,11 +48,19 @@ create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   email       text not null,
   full_name   text,
-  role        text check (role in ('reviewer', 'manager', 'admin')),   -- null = pending approval
+  role        text check (role in ('volunteer', 'reviewer', 'manager', 'admin')),   -- null = pending approval
   active      boolean not null default true,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+
+-- Allow the volunteer role on databases created before it existed.
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('volunteer', 'reviewer', 'manager', 'admin'));
+
+-- Which signed-in volunteer collected an assisted survey. Filled by the database from the login, never by the page.
+alter table public.responses add column if not exists volunteer_id uuid default auth.uid() references public.profiles(id) on delete set null;
+create index if not exists responses_volunteer_idx on public.responses (volunteer_id);
 
 -- Role of the signed-in user, or null. SECURITY DEFINER so policies can call it without recursion.
 create or replace function public.app_role()
@@ -61,8 +71,8 @@ $$;
 create or replace function public.has_role(min_role text)
 returns boolean language sql stable security definer set search_path = public as $$
   select coalesce(
-    array_position(array['reviewer','manager','admin'], public.app_role())
-      >= array_position(array['reviewer','manager','admin'], min_role),
+    array_position(array['volunteer','reviewer','manager','admin'], public.app_role())
+      >= array_position(array['volunteer','reviewer','manager','admin'], min_role),
     false)
 $$;
 
@@ -204,7 +214,7 @@ revoke all on public.responses, public.contacts, public.profiles, public.focus_g
 grant insert on public.responses, public.contacts to anon;
 
 revoke all on public.responses, public.contacts, public.profiles from authenticated;
-grant select, delete on public.responses to authenticated;
+grant select, insert, delete on public.responses to authenticated;
 grant update (excluded, exclude_reason) on public.responses to authenticated;
 grant select, delete on public.contacts to authenticated;
 grant select on public.profiles to authenticated;
@@ -216,7 +226,10 @@ grant usage on sequence public.audit_log_id_seq to authenticated;
 
 -- responses
 drop policy if exists "public can submit responses" on public.responses;
-create policy "public can submit responses" on public.responses for insert to anon with check (true);
+create policy "public can submit responses" on public.responses for insert to anon with check (volunteer_id is null);
+drop policy if exists "volunteers submit own responses" on public.responses;
+create policy "volunteers submit own responses" on public.responses for insert to authenticated
+  with check (public.has_role('volunteer') and volunteer_id = auth.uid());
 drop policy if exists "managers read responses" on public.responses;
 create policy "managers read responses" on public.responses for select to authenticated using (public.has_role('manager'));
 drop policy if exists "managers flag responses" on public.responses;
@@ -280,7 +293,7 @@ create policy "admins read audit" on public.audit_log for select to authenticate
 drop function if exists public.fetch_responses();   -- return columns changed; recreate
 create function public.fetch_responses()
 returns table (
-  id uuid, survey_version text, language text, mode text, volunteer_code text,
+  id uuid, survey_version text, language text, mode text, volunteer_code text, volunteer_verified boolean,
   started_at timestamptz, submitted_at timestamptz, duration_seconds integer, section_seconds jsonb,
   excluded boolean, exclude_reason text, answers jsonb
 )
@@ -288,20 +301,35 @@ language plpgsql stable security definer set search_path = public as $$
 #variable_conflict use_column
 declare r text := public.app_role();
 begin
-  if r is null then
+  if r is null or r = 'volunteer' then
     raise exception 'not authorized' using errcode = '42501';
   end if;
   return query
     select x.id, x.survey_version, x.language, x.mode,
-           case when r = 'reviewer' then null else x.volunteer_code end,
+           case when r = 'reviewer' then null
+                else coalesce(nullif(p.full_name, ''), p.email, x.volunteer_code) end,
+           x.volunteer_id is not null,
            x.started_at, x.submitted_at, x.duration_seconds, x.section_seconds, x.excluded, x.exclude_reason,
            case when r = 'reviewer'
                 then (select coalesce(jsonb_object_agg(e.k, e.v), '{}'::jsonb)
                         from jsonb_each(x.answers) as e(k, v) where right(e.k, 6) <> '_other')
                 else x.answers end
     from public.responses x
+    left join public.profiles p on p.id = x.volunteer_id
     order by x.submitted_at, x.id;
 end $$;
+
+-- A volunteer's own submissions, without any answers.
+create or replace function public.my_submissions()
+returns table (id uuid, submitted_at timestamptz, language text, mode text, duration_seconds integer, excluded boolean)
+language sql stable security definer set search_path = public as $$
+  select x.id, x.submitted_at, x.language, x.mode, x.duration_seconds, x.excluded
+  from public.responses x
+  where x.volunteer_id = auth.uid() and public.has_role('volunteer')
+  order by x.submitted_at desc
+$$;
+revoke all on function public.my_submissions() from public, anon;
+grant execute on function public.my_submissions() to authenticated;
 
 revoke all on function public.fetch_responses() from public, anon;
 grant execute on function public.fetch_responses() to authenticated;

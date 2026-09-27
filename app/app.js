@@ -228,6 +228,7 @@
       html += '<p class="small-note"><button type="button" class="link-btn" data-action="export">' +
         esc(fmt(UI.en.exportLocal, { n: local.length })) + '</button></p>';
     }
+    html += '<p class="small-note staff-link"><a href="staff.html">Staff sign in</a></p>';
     return html;
   }
 

@@ -3,7 +3,8 @@
 A bilingual (English / नेपाली) community needs survey for the Nepali Association of Northern California,
 funded by Contra Costa County.
 
-- `app/index.html`: the public survey. Plain HTML, CSS and JavaScript with no build step, mobile-first, and works offline.
+- `app/index.html` and the other public pages (`about`, `activities`, `timeline`, `resources`, `get-involved`, `contact`): the bilingual project website. Contact details live at the top of `app/site.js`.
+- `app/survey.html`: the public survey. Plain HTML, CSS and JavaScript with no build step, mobile-first, and works offline.
 - `app/staff.html`: the staff portal, with sign-in and pages for Data Reviewers, Program Managers and Admins.
 - `app/survey-data.js`: the full questionnaire in both languages. Edit wording here.
 - `db/schema.sql`: Supabase database: tables, roles and permissions. Safe to run again after changes.
@@ -12,7 +13,7 @@ funded by Contra Costa County.
 
 ## Try it
 
-Open `app/index.html` in a browser. With no server configured it runs in **test mode**:
+Open `app/index.html` in a browser for the website, or `app/survey.html` for the survey. With no server configured it runs in **test mode**:
 responses are saved in that browser and can be downloaded from the start page.
 
 To test offline mode and phone layout from another device, serve the folder:
@@ -78,3 +79,16 @@ When a dashboard filter narrows results to fewer than 5 people, results are hidd
    ```
 
 5. From then on, other staff choose **Request access**, and an admin approves them on **Users & roles**.
+
+## Public website
+
+The site home page introduces the project, the problem, the community it serves, the four activities, the timeline,
+the sponsor, and a "Take the survey" button in the menu. Every page has an English / नेपाली switch in the header;
+the choice is remembered across pages. Link straight to Nepali with `?lang=ne`, for example `index.html?lang=ne`.
+
+**Before sharing the site, fill in the contact details** at the top of `app/site.js`: address, email, phone, office hours,
+Facebook, WhatsApp and the main NANC website. Until then the site shows "Coming soon" in their place.
+
+Each page holds its English and Nepali text side by side (`lang="en"` and `lang="ne"` elements), so a translation fix is
+a direct edit next to the English. The timeline marks each phase as completed, happening now or coming up
+automatically from the dates in `timeline.html`.

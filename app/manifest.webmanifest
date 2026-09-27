@@ -1,7 +1,7 @@
 {
   "name": "NANC Community Needs Survey",
   "short_name": "NANC Survey",
-  "start_url": "./index.html",
+  "start_url": "./survey.html",
   "display": "standalone",
   "background_color": "#f5f6f8",
   "theme_color": "#1d4f91",

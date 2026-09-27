@@ -1,6 +1,6 @@
 /* Offline cache so volunteers can open and fill the survey without internet. */
-var CACHE = 'nanc-survey-v1';
-var FILES = ['./', './index.html', './styles.css', './config.js', './survey-data.js', './app.js', './manifest.webmanifest'];
+var CACHE = 'nanc-survey-v2';
+var FILES = ['./', './survey.html', './styles.css', './config.js', './survey-data.js', './app.js', './manifest.webmanifest'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }));

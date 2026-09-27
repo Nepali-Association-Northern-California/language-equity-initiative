@@ -307,7 +307,7 @@
   function authShell(inner) {
     app.innerHTML = '<div class="auth-wrap"><div class="auth-card">' +
       '<div class="auth-brand"><span class="brand-mark">N</span><div><strong>NANC Staff Portal</strong><span>Community Needs Survey</span></div></div>' +
-      inner + '</div><p class="auth-foot"><a href="index.html">Go to the public survey</a></p></div>';
+      inner + '</div><p class="auth-foot"><a href="index.html">Project website</a> · <a href="survey.html">Public survey</a></p></div>';
   }
 
   function renderLogin(tab, notice) {
@@ -446,7 +446,7 @@
     var html = '<section class="panel hero-panel vol-hero"><div class="hero-row"><div>' +
       '<p class="stat-label">Signed in as ' + esc(profile.full_name || profile.email) + '</p>' +
       '<p class="hero-value">' + C.fmtNum(mine.length) + '<span class="hero-of"> surveys collected</span></p></div>' +
-      '<a class="btn btn-primary btn-big" href="index.html">Start a survey</a></div>' +
+      '<a class="btn btn-primary btn-big" href="survey.html">Start a survey</a></div>' +
       '<p class="panel-note">Surveys you start from this browser are recorded under your name. Choose how you are collecting it (in person, by phone or from a paper form) on the start page.</p></section>';
     if (queued) {
       html += '<p class="notice warn">' + C.fmtNum(queued) + ' survey' + (queued === 1 ? ' is' : 's are') +

@@ -24,6 +24,14 @@
       continueTitle: 'You have an unfinished survey on this device.',
       continueBtn: 'Continue where I left off',
       discardBtn: 'Start over',
+      brandTitle: 'Language Equity & Access',
+      nav: [['index.html', 'Home'], ['about.html', 'About'], ['activities.html', 'What we do'], ['timeline.html', 'Timeline'],
+        ['resources.html', 'Resources'], ['get-involved.html', 'Get involved'], ['contact.html', 'Contact']],
+      takeSurvey: 'Take the survey',
+      menu: 'Menu',
+      footerSponsor: 'Funded by Contra Costa County through the West Contra Costa Community Impact Fund.',
+      projectSite: 'Project website',
+      staffSignIn: 'Staff and volunteer sign in',
       volunteerMode: 'Volunteer mode',
       signedInAs: 'Signed in as',
       mySurveys: 'My surveys',
@@ -75,6 +83,14 @@
       continueTitle: 'यस उपकरणमा तपाईंको अधुरो सर्वेक्षण छ।',
       continueBtn: 'छोडेको ठाउँबाट जारी राख्नुहोस्',
       discardBtn: 'नयाँ सुरु गर्नुहोस्',
+      brandTitle: 'भाषिक समानता तथा पहुँच',
+      nav: [['index.html', 'गृहपृष्ठ'], ['about.html', 'परियोजनाबारे'], ['activities.html', 'हाम्रा गतिविधि'], ['timeline.html', 'समयरेखा'],
+        ['resources.html', 'स्रोत सामग्री'], ['get-involved.html', 'सहभागी हुनुहोस्'], ['contact.html', 'सम्पर्क']],
+      takeSurvey: 'सर्वेक्षणमा भाग लिनुहोस्',
+      menu: 'मेनु',
+      footerSponsor: 'कन्ट्रा कोस्टा काउन्टीको पश्चिम कन्ट्रा कोस्टा सामुदायिक प्रभाव कोषमार्फत आर्थिक सहयोग।',
+      projectSite: 'परियोजना वेबसाइट',
+      staffSignIn: 'कर्मचारी तथा स्वयंसेवक साइन इन',
       volunteerMode: 'स्वयंसेवक मोड',
       signedInAs: 'साइन इन गर्ने',
       mySurveys: 'मेरा सर्वेक्षणहरू',
@@ -134,7 +150,15 @@
   if (!volunteer.mode) volunteer.mode = 'in_person';
   var VPROF_KEY = 'nanc_volunteer_profile_v1';
   var vprofile = load(VPROF_KEY, null);
-  var state = freshState('en');
+  var SITE_LANG_KEY = 'nanc_site_lang';   // shared with the project website
+  function siteLang() {
+    var l = load(SITE_LANG_KEY, null);
+    if (l === 'en' || l === 'ne') return l;
+    try { l = localStorage.getItem(SITE_LANG_KEY); } catch (e) { l = null; }
+    return l === 'ne' ? 'ne' : 'en';
+  }
+  function rememberLang(l) { try { localStorage.setItem(SITE_LANG_KEY, l); } catch (e) { /* ignore */ } }
+  var state = freshState(siteLang());
   var draft = load(DRAFT_KEY, null);
   var statusMessage = '';
 
@@ -188,12 +212,15 @@
     else if (state.page === 'thanks') body = renderEnd(t('thanksTitle'), t('thanksBody'), true);
     else if (state.page === 'declined') body = renderEnd(t('declinedTitle'), t('declinedBody'), false);
     else body = renderSection(SURVEY.sections[sectionIndex()], sectionIndex());
-    app.innerHTML = renderHeader() + '<main class="page" id="main">' + body + '</main>';
+    app.innerHTML = renderHeader() + '<main class="page" id="main">' + body + '</main>' + (timing() ? '' : renderFooter());
     window.scrollTo(0, keepScroll ? y : 0);
   }
 
+  // Same header as the project website. Full menu on the start and end pages; while someone is answering,
+  // a compact header (logo, timer, language) keeps them focused. Their draft is saved either way.
   function renderHeader() {
     var i = sectionIndex();
+    var full = !timing();
     var progress = '';
     if (i >= 0) {
       var pct = Math.round(((i + 1) / SURVEY.sections.length) * 100);
@@ -201,13 +228,32 @@
         '<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '">' +
         '<div class="progress-bar" style="width:' + pct + '%"></div></div>';
     }
-    return '<header class="topbar"><div class="topbar-inner">' +
-      '<div class="brand"><span class="brand-mark" aria-hidden="true">N</span>' +
-      '<span class="brand-text"><strong>NANC</strong><span>' + esc(t('appTitle')) + '</span></span></div>' +
+    var nav = '';
+    if (full) {
+      nav = '<nav id="site-nav" class="site-nav" aria-label="Main"><ul>' + t('nav').map(function (n) {
+        return '<li><a href="' + n[0] + '">' + esc(n[1]) + '</a></li>';
+      }).join('') + '<li class="nav-cta"><a href="survey.html" class="btn-pill" aria-current="page">' + esc(t('takeSurvey')) + '</a></li></ul></nav>';
+    }
+    return '<header class="topbar">' +
+      '<div class="topbar-inner">' +
+      '<a class="brand" href="index.html"><img src="NANC_Logo.png" alt="" width="44" height="44">' +
+      '<span class="brand-text"><strong>' + esc(t('brandTitle')) + '</strong><span>' + esc(t('appTitle')) + '</span></span></a>' +
+      '<div class="bar-actions">' +
       (timing() ? '<span class="timer" id="timer-chip" role="timer" aria-label="' + esc(t('timeSpent')) + '" title="' + esc(t('timeSpent')) + '">' +
         '<span class="timer-icon" aria-hidden="true">⏱</span><span id="timer">' + fmtClock(state.activeMs || 0) + '</span></span>' : '') +
       '<button type="button" class="lang-btn" data-action="toggle-lang" lang="' + (state.lang === 'en' ? 'ne' : 'en') + '">' +
-      esc(t('switchLang')) + '</button></div>' + progress + '</header>';
+      esc(t('switchLang')) + '</button>' +
+      (full ? '<button type="button" class="menu-toggle" data-action="toggle-menu" aria-expanded="false" aria-controls="site-nav">' +
+        '<span aria-hidden="true">☰</span><span class="sr-only">' + esc(t('menu')) + '</span></button>' : '') +
+      '</div></div>' + nav + progress + '</header>';
+  }
+
+  function renderFooter() {
+    return '<footer class="site-footer"><div class="footer-inner">' +
+      '<img src="NANC_Logo.png" alt="NANC logo" width="56" height="56">' +
+      '<div><p>' + esc(t('footerSponsor')) + '</p>' +
+      '<p class="footer-links"><a href="index.html">' + esc(t('projectSite')) + '</a> · <a href="contact.html">' + esc(t('nav')[6][1]) + '</a> · ' +
+      '<a href="staff.html">' + esc(t('staffSignIn')) + '</a></p></div></div></footer>';
   }
 
   function renderStart() {
@@ -240,7 +286,6 @@
       html += '<p class="small-note"><button type="button" class="link-btn" data-action="export">' +
         esc(fmt(UI.en.exportLocal, { n: local.length })) + '</button></p>';
     }
-    html += '<p class="small-note staff-link"><a href="staff.html">Staff sign in</a></p>';
     return html;
   }
 
@@ -483,9 +528,14 @@
     if (!btn) return;
     var action = btn.dataset.action;
 
-    if (action === 'toggle-lang') { state.lang = state.lang === 'en' ? 'ne' : 'en'; saveDraft(); render(true); }
+    if (action === 'toggle-lang') { state.lang = state.lang === 'en' ? 'ne' : 'en'; rememberLang(state.lang); saveDraft(); render(true); }
+    else if (action === 'toggle-menu') {
+      var open = document.body.classList.toggle('nav-open');
+      btn.setAttribute('aria-expanded', String(open));
+    }
     else if (action === 'start') {
       state = freshState(btn.dataset.lang);
+      rememberLang(btn.dataset.lang);
       state.page = 'consent';
       state.startedAt = new Date().toISOString();
       lastTick = lastInteraction = Date.now();
@@ -515,7 +565,7 @@
       var input = document.getElementById('in-' + qid + '-' + row);
       if (input) input.value = c[row];
     }
-    else if (action === 'restart') { state = freshState(state.lang); statusMessage = ''; render(); }
+    else if (action === 'restart') { state = freshState(state.lang); statusMessage = ''; document.body.classList.remove('nav-open'); render(); }
     else if (action === 'export') exportLocal();
     else if (action === 'vol-signout') volunteerSignOut();
   });

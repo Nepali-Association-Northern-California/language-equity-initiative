@@ -51,6 +51,25 @@
     return { html: html, table: t };
   }
 
+  /* Horizontal bars for measured values (not shares). items: [{label, value, n}], format(value) -> text */
+  function valueBars(items, format, opts) {
+    opts = opts || {};
+    var max = Math.max.apply(null, items.map(function (i) { return i.value || 0; }).concat([0.0001]));
+    var html = '<div class="bars">' + items.map(function (it) {
+      var hidden = opts.suppress && it.n > 0 && it.n < 5;
+      var text = it.value == null || hidden ? '—' : format(it.value);
+      var tip = it.label + ' — ' + (hidden ? 'fewer than 5 responses' : text + (it.n != null ? ' (' + fmtNum(it.n) + ' responses)' : ''));
+      var w = it.value == null || hidden ? 0 : (it.value / max) * 100;
+      return '<div class="bar-row" data-tip="' + esc(tip) + '" tabindex="0"><span class="bar-label">' + esc(it.label) + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + w.toFixed(2) + '%"></span><span class="bar-value">' + esc(text) + '</span></span></div>';
+    }).join('') + '</div>';
+    var t = table([opts.labelHeader || 'Item', opts.valueHeader || 'Value', 'Responses'], items.map(function (it) {
+      var hidden = opts.suppress && it.n > 0 && it.n < 5;
+      return [it.label, it.value == null || hidden ? '—' : format(it.value), hidden ? '<5' : fmtNum(it.n || 0)];
+    }));
+    return { html: html, table: t };
+  }
+
   /* 100% stacked bars. rows: [{label, counts: [n per col], total}], cols: [label] */
   var SERIES = 6;
   function luminanceDark(hex) {
@@ -182,5 +201,5 @@
     document.addEventListener('scroll', function () { tip.hidden = true; }, true);
   }
 
-  window.Charts = { bars: bars, stacked: stacked, columns: columns, statTile: statTile, meter: meter, table: table, initTooltips: initTooltips, esc: esc, pct: pct, fmtPct: fmtPct, fmtNum: fmtNum };
+  window.Charts = { bars: bars, valueBars: valueBars, stacked: stacked, columns: columns, statTile: statTile, meter: meter, table: table, initTooltips: initTooltips, esc: esc, pct: pct, fmtPct: fmtPct, fmtNum: fmtNum };
 })();

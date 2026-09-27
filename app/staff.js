@@ -75,7 +75,12 @@
     if (!iso) return '—';
     return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
+  // Active minutes on the survey (timer), falling back to start-to-submit time for older responses.
   function minutes(r) {
+    if (r.duration_seconds != null && r.duration_seconds > 0) return r.duration_seconds / 60;
+    return elapsedMinutes(r);
+  }
+  function elapsedMinutes(r) {
     if (!r.started_at || !r.submitted_at) return null;
     var m = (new Date(r.submitted_at) - new Date(r.started_at)) / 60000;
     return m > 0 && m < 240 ? m : null;
@@ -448,7 +453,7 @@
       return;
     }
 
-    var mins = f.map(minutes).filter(function (m) { return m != null; });
+    var mins = f.filter(function (r) { return r.mode !== 'paper'; }).map(minutes).filter(function (m) { return m != null; });
     var last7 = f.filter(function (r) { return new Date(r.submitted_at) > Date.now() - 7 * 86400000; }).length;
     var ne = f.filter(function (r) { return r.language === 'ne'; }).length;
     var assisted = f.filter(function (r) { return r.mode !== 'self'; }).length;
@@ -457,9 +462,10 @@
       C.statTile('Last 7 days', C.fmtNum(last7), 'new responses') +
       C.statTile('Answered in Nepali', C.fmtPct(C.pct(ne, f.length)), C.fmtNum(ne) + ' responses') +
       C.statTile('Volunteer-assisted', C.fmtPct(C.pct(assisted, f.length)), 'in person, phone or paper') +
-      C.statTile('Median time', mins.length ? Math.round(median(mins)) + ' min' : '—', 'to complete the survey') + '</div>';
+      C.statTile('Median time', mins.length ? Math.round(median(mins)) + ' min' : '—', 'active time, excluding paper entry') + '</div>';
 
     html += card('Responses per week', 'Submitted surveys, by week', C.columns(weeklyPoints(f), { label: 'Responses per week', periodLabel: 'Week' }));
+    html += '<div class="grid-cards">' + timeCards(f, suppress) + '</div>';
 
     html += '<div class="section-tabs" role="tablist" aria-label="Survey sections">' + SURVEY.sections.map(function (s, i) {
       return '<button type="button" role="tab" class="tab' + (ui.section === i ? ' is-active' : '') + '" aria-selected="' + (ui.section === i) +
@@ -484,6 +490,28 @@
     });
     html += '</div>';
     view.innerHTML = html;
+  }
+
+  /* Time taken: distribution of total active time, and median time per section. Paper entry is left out
+     because a volunteer typing in a paper form is not the respondent's own time. */
+  function timeCards(rows, suppress) {
+    var timed = rows.filter(function (r) { return r.mode !== 'paper' && minutes(r) != null; });
+    var bins = [[0, 5, 'Under 5 min'], [5, 10, '5–10 min'], [10, 15, '10–15 min'], [15, 20, '15–20 min'], [20, 30, '20–30 min'], [30, Infinity, '30 min or more']];
+    var dist = bins.map(function (b) {
+      return { label: b[2], count: timed.filter(function (r) { var m = minutes(r); return m >= b[0] && m < b[1]; }).length };
+    });
+    var withSections = timed.filter(function (r) { return r.section_seconds; });
+    var pages = [{ id: 'consent', en: 'Consent' }].concat(SURVEY.sections.map(function (s, i) { return { id: s.id, en: (i + 1) + '. ' + s.title.en }; }));
+    var perSection = pages.map(function (pg) {
+      var vals = withSections.map(function (r) { return r.section_seconds[pg.id]; }).filter(function (v) { return v > 0; });
+      return { label: pg.en, value: vals.length ? median(vals) / 60 : null, n: vals.length };
+    });
+    var fmtMin = function (m) { return m < 1 ? Math.round(m * 60) + ' sec' : (Math.round(m * 10) / 10) + ' min'; };
+    return card('How long the survey takes', 'Active time for ' + C.fmtNum(timed.length) + ' responses. Paper-form entries are left out.',
+        timed.length ? C.bars(dist, timed.length, { suppress: suppress }) : { html: '<p class="empty">No timed responses yet.</p>', table: '' }) +
+      card('Median time per section', 'Where people spend their time. Helps spot sections that are too long or confusing.',
+        withSections.length ? C.valueBars(perSection, fmtMin, { suppress: suppress, labelHeader: 'Section', valueHeader: 'Median time' })
+          : { html: '<p class="empty">Section timing appears for responses submitted after the timer was added.</p>', table: '' });
   }
 
   function refreshButton() {
@@ -637,7 +665,6 @@
 
   function renderResponseDetail(view, r) {
     if (!r) { view.innerHTML = '<div class="panel"><p>Response not found. <a href="#/responses">Back to responses</a></p></div>'; return; }
-    var m = minutes(r);
     var html = '<p><a href="#/responses" class="btn-link">‹ Back to responses</a></p>' +
       '<section class="panel"><div class="detail-meta">' +
       '<div><span>Response</span><strong><code>' + esc(r.id) + '</code></strong></div>' +
@@ -645,7 +672,8 @@
       '<div><span>Language</span><strong>' + esc(LANG_LABEL[r.language]) + '</strong></div>' +
       '<div><span>How</span><strong>' + esc(MODE_LABEL[r.mode] || r.mode) + '</strong></div>' +
       (can('manager') ? '<div><span>Volunteer</span><strong>' + esc(r.volunteer_code || '—') + '</strong></div>' : '') +
-      '<div><span>Time taken</span><strong>' + (m == null ? '—' : Math.round(m) + ' min') + '</strong></div>' +
+      '<div><span>Active time</span><strong>' + (r.duration_seconds ? Math.round(r.duration_seconds / 60) + ' min' : '—') + '</strong></div>' +
+      '<div><span>Start to finish</span><strong>' + (elapsedMinutes(r) == null ? '—' : Math.round(elapsedMinutes(r)) + ' min') + '</strong></div>' +
       '<div><span>Status</span><strong>' + (r.excluded ? badge('Excluded', 'warn') + ' ' + esc(r.exclude_reason || '') : badge('Included', 'ok')) + '</strong></div></div>';
     if (can('manager')) {
       html += '<div class="btn-row">' + (r.excluded
@@ -717,13 +745,16 @@
     var incl = mgr && document.getElementById('exp-excluded') && document.getElementById('exp-excluded').checked;
     var rows = cache.responses.filter(function (r) { return incl || !r.excluded; });
     var cols = exportColumns(mgr);
-    var head = ['response_id', 'survey_version', 'submitted_at', 'language', 'mode'].concat(mgr ? ['volunteer_code', 'excluded', 'exclude_reason'] : []).concat(['minutes'])
+    var secIds = ['consent'].concat(SURVEY.sections.map(function (s) { return s.id; }));
+    var head = ['response_id', 'survey_version', 'submitted_at', 'language', 'mode'].concat(mgr ? ['volunteer_code', 'excluded', 'exclude_reason'] : [])
+      .concat(['active_minutes', 'start_to_finish_minutes']).concat(secIds.map(function (id) { return 'seconds_' + id; }))
       .concat(cols.map(function (c) { return c.key; }));
     var out = [head];
     rows.forEach(function (r) {
-      var m = minutes(r);
       out.push([r.id, r.survey_version, r.submitted_at, r.language, r.mode].concat(mgr ? [r.volunteer_code, r.excluded ? 1 : 0, r.exclude_reason] : [])
-        .concat([m == null ? '' : m.toFixed(1)]).concat(cols.map(function (c) { var v = c.get(r.answers || {}); return v == null ? '' : v; })));
+        .concat([r.duration_seconds ? (r.duration_seconds / 60).toFixed(1) : '', elapsedMinutes(r) == null ? '' : elapsedMinutes(r).toFixed(1)])
+        .concat(secIds.map(function (id) { return r.section_seconds && r.section_seconds[id] != null ? r.section_seconds[id] : ''; }))
+        .concat(cols.map(function (c) { var v = c.get(r.answers || {}); return v == null ? '' : v; })));
     });
     download('nanc-survey-responses-' + stamp() + '.csv', csv(out));
     audit('export.responses', null, { rows: rows.length, include_excluded: !!incl });

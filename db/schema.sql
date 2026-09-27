@@ -27,6 +27,10 @@ create table if not exists public.responses (
 );
 alter table public.responses add column if not exists excluded       boolean not null default false;
 alter table public.responses add column if not exists exclude_reason text;
+-- Active time on the survey (seconds). Counts only while the page is on screen and in use.
+alter table public.responses add column if not exists duration_seconds integer check (duration_seconds between 0 and 86400);
+-- Active seconds per page, keyed by section id, e.g. {"consent": 40, "about": 180, ...}
+alter table public.responses add column if not exists section_seconds jsonb;
 create index if not exists responses_submitted_at_idx on public.responses (submitted_at);
 
 -- Names are kept apart from answers. Only admins can read this table.
@@ -273,10 +277,12 @@ create policy "admins read audit" on public.audit_log for select to authenticate
 -- ---------------------------------------------------------------- read API for dashboards
 -- All staff read responses through this function. Reviewers get free-text "Other" answers
 -- and volunteer names removed; managers and admins get everything.
-create or replace function public.fetch_responses()
+drop function if exists public.fetch_responses();   -- return columns changed; recreate
+create function public.fetch_responses()
 returns table (
   id uuid, survey_version text, language text, mode text, volunteer_code text,
-  started_at timestamptz, submitted_at timestamptz, excluded boolean, exclude_reason text, answers jsonb
+  started_at timestamptz, submitted_at timestamptz, duration_seconds integer, section_seconds jsonb,
+  excluded boolean, exclude_reason text, answers jsonb
 )
 language plpgsql stable security definer set search_path = public as $$
 #variable_conflict use_column
@@ -288,7 +294,7 @@ begin
   return query
     select x.id, x.survey_version, x.language, x.mode,
            case when r = 'reviewer' then null else x.volunteer_code end,
-           x.started_at, x.submitted_at, x.excluded, x.exclude_reason,
+           x.started_at, x.submitted_at, x.duration_seconds, x.section_seconds, x.excluded, x.exclude_reason,
            case when r = 'reviewer'
                 then (select coalesce(jsonb_object_agg(e.k, e.v), '{}'::jsonb)
                         from jsonb_each(x.answers) as e(k, v) where right(e.k, 6) <> '_other')

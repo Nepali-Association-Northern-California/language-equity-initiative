@@ -46,6 +46,12 @@ There is also a "Staff sign in" link at the bottom of the survey start page.
 | Exclude or include a response | | ✓ | ✓ |
 | Users & roles, names (restricted), settings, audit log, deleting data | | | ✓ |
 
+**Survey timing.** A small timer in the survey header shows the time spent so far. It counts only while the survey
+is on screen and in use. It pauses when the tab is hidden or after 5 minutes without a tap or keypress, so a
+survey left open or resumed the next day is not inflated. Each response stores the active total (`duration_seconds`)
+and the time per section (`section_seconds`). The survey dashboard charts both, and exports include them.
+Paper-form entries are left out of timing charts because they measure the volunteer's typing, not the respondent.
+
 "De-identified" means free-text "Other" answers and volunteer names are removed by the database itself,
 and the mental health and safety section appears only as totals.
 When a dashboard filter narrows results to fewer than 5 people, results are hidden.

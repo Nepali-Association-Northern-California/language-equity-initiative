@@ -43,6 +43,9 @@
       less: 'Fewer',
       more: 'More',
       skipNote: 'You can skip any question that is not marked Required.',
+      timeSpent: 'Time spent',
+      timerPaused: 'Timer paused while you are away',
+      finishedIn: 'You finished the survey in about {n} minutes.',
       thanksTitle: 'Thank you!',
       thanksBody: 'Your answers have been saved. They will be used only in summary form to plan programs and services for the Nepali community.',
       declinedTitle: 'Thank you for your time',
@@ -85,6 +88,9 @@
       less: 'घटाउनुहोस्',
       more: 'बढाउनुहोस्',
       skipNote: '"अनिवार्य" भनी उल्लेख नगरिएका प्रश्नहरू छोड्न सक्नुहुन्छ।',
+      timeSpent: 'लागेको समय',
+      timerPaused: 'तपाईं टाढा हुँदा समय रोकिएको छ',
+      finishedIn: 'तपाईंले करिब {n} मिनेटमा सर्वेक्षण पूरा गर्नुभयो।',
       thanksTitle: 'धन्यवाद!',
       thanksBody: 'तपाईंका उत्तरहरू सुरक्षित गरिएका छन्। यिनीहरू नेपाली समुदायका लागि कार्यक्रम तथा सेवा योजना बनाउन समग्र सारांशका रूपमा मात्र प्रयोग गरिनेछन्।',
       declinedTitle: 'तपाईंको समयका लागि धन्यवाद',
@@ -118,7 +124,7 @@
   var statusMessage = '';
 
   function freshState(lang) {
-    return { lang: lang, page: 'start', answers: {}, id: uuid(), startedAt: null };
+    return { lang: lang, page: 'start', answers: {}, id: uuid(), startedAt: null, activeMs: 0, sectionMs: {} };
   }
   function saveDraft() {
     if (state.page === 'start' || state.page === 'thanks' || state.page === 'declined') return;
@@ -183,6 +189,8 @@
     return '<header class="topbar"><div class="topbar-inner">' +
       '<div class="brand"><span class="brand-mark" aria-hidden="true">N</span>' +
       '<span class="brand-text"><strong>NANC</strong><span>' + esc(t('appTitle')) + '</span></span></div>' +
+      (timing() ? '<span class="timer" id="timer-chip" role="timer" aria-label="' + esc(t('timeSpent')) + '" title="' + esc(t('timeSpent')) + '">' +
+        '<span class="timer-icon" aria-hidden="true">⏱</span><span id="timer">' + fmtClock(state.activeMs || 0) + '</span></span>' : '') +
       '<button type="button" class="lang-btn" data-action="toggle-lang" lang="' + (state.lang === 'en' ? 'ne' : 'en') + '">' +
       esc(t('switchLang')) + '</button></div>' + progress + '</header>';
   }
@@ -269,6 +277,7 @@
     return '<section class="end card">' +
       '<div class="end-icon" aria-hidden="true">✓</div>' +
       '<h1>' + esc(title) + '</h1><p>' + esc(bodyText) + '</p>' +
+      (showStatus && state.activeMs ? '<p class="duration">' + esc(fmt(t('finishedIn'), { n: Math.max(1, Math.round(state.activeMs / 60000)) })) + '</p>' : '') +
       (showStatus && statusMessage ? '<p class="status">' + esc(statusMessage) + '</p>' : '') +
       '</section>' + renderHelpBox() +
       '<div class="center"><button type="button" class="btn btn-primary" data-action="restart">' + esc(t('newSurvey')) + '</button></div>';
@@ -446,10 +455,11 @@
       state = freshState(btn.dataset.lang);
       state.page = 'consent';
       state.startedAt = new Date().toISOString();
+      lastTick = lastInteraction = Date.now();
       remove(DRAFT_KEY); draft = null;
       saveDraft(); render();
     }
-    else if (action === 'resume') { state = draft; draft = null; render(); }
+    else if (action === 'resume') { state = draft; state.activeMs = state.activeMs || 0; state.sectionMs = state.sectionMs || {}; draft = null; lastTick = lastInteraction = Date.now(); render(); }
     else if (action === 'discard') { remove(DRAFT_KEY); draft = null; render(); }
     else if (action === 'next') goNext();
     else if (action === 'back') {
@@ -526,6 +536,8 @@
         volunteer_code: volunteer.mode && volunteer.mode !== 'self' ? (volunteer.name || null) : null,
         started_at: state.startedAt,
         submitted_at: new Date().toISOString(),
+        duration_seconds: Math.round((state.activeMs || 0) / 1000),
+        section_seconds: sectionSeconds(),
         answers: answers
       },
       contact: Object.keys(contact).length ? { response_id: state.id, first_name: contact.C1 || null, last_name: contact.C2 || null } : null
@@ -546,12 +558,21 @@
       body: JSON.stringify(row)
     }).then(function (res) {
       // 409 = already uploaded (retry after a lost response); treat as success
-      if (!res.ok && res.status !== 409) throw new Error(table + ' ' + res.status);
+      if (!res.ok && res.status !== 409) { var err = new Error(table + ' ' + res.status); err.status = res.status; throw err; }
     });
   }
 
   function send(payload) {
-    return postRow('responses', payload.response).then(function () {
+    return postRow('responses', payload.response).catch(function (err) {
+      // Database not yet upgraded with the timing columns: send without them rather than lose the response.
+      if (err.status === 400 && 'duration_seconds' in payload.response) {
+        var legacy = Object.assign({}, payload.response);
+        delete legacy.duration_seconds;
+        delete legacy.section_seconds;
+        return postRow('responses', legacy);
+      }
+      throw err;
+    }).then(function () {
       return payload.contact ? postRow('contacts', payload.contact) : null;
     });
   }
@@ -604,6 +625,54 @@
     a.click();
     a.remove();
   }
+
+  /* ------------------------------------------------------------ timer (active time only) */
+  // Counts only while the survey page is on screen and someone has touched it in the last 5 minutes,
+  // so a phone left on a table or a survey resumed next day does not inflate the time.
+  var IDLE_LIMIT = 5 * 60 * 1000;
+  var lastTick = Date.now();
+  var lastInteraction = Date.now();
+  var tickCount = 0;
+
+  function timing() { return state.page === 'consent' || sectionIndex() >= 0; }
+  function sectionKey() { return state.page === 'consent' ? 'consent' : SURVEY.sections[sectionIndex()].id; }
+  function fmtClock(ms) {
+    var total = Math.floor(ms / 1000);
+    return num(Math.floor(total / 60)) + ':' + num(('0' + (total % 60)).slice(-2));
+  }
+  function sectionSeconds() {
+    var out = {};
+    Object.keys(state.sectionMs || {}).forEach(function (k) { out[k] = Math.round(state.sectionMs[k] / 1000); });
+    return out;
+  }
+  function tick() {
+    var now = Date.now();
+    var delta = Math.min(now - lastTick, 5000);
+    lastTick = now;
+    var paused = document.visibilityState !== 'visible' || now - lastInteraction > IDLE_LIMIT;
+    if (timing() && !paused) {
+      state.activeMs = (state.activeMs || 0) + delta;
+      state.sectionMs = state.sectionMs || {};
+      var k = sectionKey();
+      state.sectionMs[k] = (state.sectionMs[k] || 0) + delta;
+      if (++tickCount % 5 === 0) saveDraft();
+    }
+    var el = document.getElementById('timer');
+    if (el) {
+      el.textContent = fmtClock(state.activeMs || 0);
+      var chip = document.getElementById('timer-chip');
+      chip.classList.toggle('is-paused', paused);
+      chip.title = paused ? t('timerPaused') : t('timeSpent');
+    }
+  }
+  ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart'].forEach(function (ev) {
+    document.addEventListener(ev, function () { lastInteraction = Date.now(); }, { passive: true, capture: true });
+  });
+  document.addEventListener('visibilitychange', function () {
+    lastTick = Date.now();
+    if (document.visibilityState === 'hidden') saveDraft();
+  });
+  setInterval(tick, 1000);
 
   window.addEventListener('online', flushQueue);
 

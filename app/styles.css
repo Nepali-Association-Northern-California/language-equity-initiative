@@ -64,6 +64,11 @@ button, input { font: inherit; color: inherit; }
 }
 .timer.is-paused { background: var(--bg); color: var(--muted); }
 .timer + .lang-btn { margin-left: 0; }
+.time-line { margin: -4px 0 14px; font-size: 16px; color: var(--muted); }
+.time-line strong { color: var(--primary); font-variant-numeric: tabular-nums; }
+.time-line .time-paused { display: none; }
+.time-line.is-paused .time-paused { display: inline; }
+.time-line.is-paused strong { color: var(--muted); }
 .duration { font-weight: 600; color: var(--primary); }
 .progress { height: 6px; background: var(--primary-soft); }
 .progress-bar { height: 100%; background: var(--primary); transition: width .3s ease; }

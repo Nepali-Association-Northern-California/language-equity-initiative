@@ -45,6 +45,8 @@
       skipNote: 'You can skip any question that is not marked Required.',
       timeSpent: 'Time spent',
       timerPaused: 'Timer paused while you are away',
+      aboutTotal: 'about 15 minutes in total',
+      paused: 'paused',
       finishedIn: 'You finished the survey in about {n} minutes.',
       thanksTitle: 'Thank you!',
       thanksBody: 'Your answers have been saved. They will be used only in summary form to plan programs and services for the Nepali community.',
@@ -90,6 +92,8 @@
       skipNote: '"अनिवार्य" भनी उल्लेख नगरिएका प्रश्नहरू छोड्न सक्नुहुन्छ।',
       timeSpent: 'लागेको समय',
       timerPaused: 'तपाईं टाढा हुँदा समय रोकिएको छ',
+      aboutTotal: 'जम्मा करिब १५ मिनेट',
+      paused: 'रोकिएको',
       finishedIn: 'तपाईंले करिब {n} मिनेटमा सर्वेक्षण पूरा गर्नुभयो।',
       thanksTitle: 'धन्यवाद!',
       thanksBody: 'तपाईंका उत्तरहरू सुरक्षित गरिएका छन्। यिनीहरू नेपाली समुदायका लागि कार्यक्रम तथा सेवा योजना बनाउन समग्र सारांशका रूपमा मात्र प्रयोग गरिनेछन्।',
@@ -240,9 +244,15 @@
     return html;
   }
 
+  function timeLine() {
+    return '<p class="time-line" id="time-line"><span aria-hidden="true">⏱</span> ' + esc(t('timeSpent')) + ' ' +
+      '<strong data-timer>' + fmtClock(state.activeMs || 0) + '</strong>' +
+      '<span class="time-paused"> (' + esc(t('paused')) + ')</span> · ' + esc(t('aboutTotal')) + '</p>';
+  }
+
   function renderConsent() {
     var c = SURVEY.consent;
-    var html = '<h1 class="section-title">' + esc(tr(c.title)) + '</h1><div class="card prose">';
+    var html = '<h1 class="section-title">' + esc(tr(c.title)) + '</h1>' + timeLine() + '<div class="card prose">';
     c.paragraphs.forEach(function (p) { html += '<p>' + esc(tr(p)) + '</p>'; });
     html += '</div>';
     c.questions.forEach(function (q) { html += renderQuestion(q); });
@@ -252,7 +262,7 @@
 
   function renderSection(section, i) {
     var html = '<p class="step">' + esc(fmt(t('sectionOf'), { n: i + 1, t: SURVEY.sections.length })) + '</p>' +
-      '<h1 class="section-title">' + esc(tr(section.title)) + '</h1>';
+      '<h1 class="section-title">' + esc(tr(section.title)) + '</h1>' + timeLine();
     if (section.intro) html += '<p class="section-intro">' + esc(tr(section.intro)) + '</p>';
     if (i === 0) html += '<p class="skip-note">' + esc(t('skipNote')) + '</p>';
     if (section.sensitive) html += renderHelpBox();
@@ -657,13 +667,16 @@
       state.sectionMs[k] = (state.sectionMs[k] || 0) + delta;
       if (++tickCount % 5 === 0) saveDraft();
     }
-    var el = document.getElementById('timer');
-    if (el) {
-      el.textContent = fmtClock(state.activeMs || 0);
-      var chip = document.getElementById('timer-chip');
+    var clock = fmtClock(state.activeMs || 0);
+    var shown = document.querySelectorAll('#timer, [data-timer]');
+    for (var i = 0; i < shown.length; i++) shown[i].textContent = clock;
+    var chip = document.getElementById('timer-chip');
+    if (chip) {
       chip.classList.toggle('is-paused', paused);
       chip.title = paused ? t('timerPaused') : t('timeSpent');
     }
+    var line = document.getElementById('time-line');
+    if (line) line.classList.toggle('is-paused', paused);
   }
   ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart'].forEach(function (ev) {
     document.addEventListener(ev, function () { lastInteraction = Date.now(); }, { passive: true, capture: true });
